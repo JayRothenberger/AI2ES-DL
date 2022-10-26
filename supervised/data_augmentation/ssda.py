@@ -3,11 +3,123 @@ import math
 import tensorflow as tf
 import numpy as np
 from keras.layers.preprocessing import image_preprocessing as image_ops
-from msda import geometric_blend, arithmetic_blend
 
 """
 TODO: make these functions from one dataset to another dataset
 """
+
+
+def fftfreqnd(h, w):
+    """ Get bin values for discrete fourier transform of size (h, w, z)
+    :param h: Required, first dimension size
+    :param w: Optional, second dimension size
+    :param z: Optional, third dimension size
+    """
+    fz = fx = 0
+    fy = np.fft.fftfreq(h)
+
+    fy = np.expand_dims(fy, -1)
+
+    if w % 2 == 1:
+        fx = np.fft.fftfreq(w)[: w // 2 + 2]
+    else:
+        fx = np.fft.fftfreq(w)[: w // 2 + 1]
+
+    return tf.math.sqrt(fx * fx + fy * fy)
+
+
+def get_spectrum(freqs, decay_power, ch, h, w=0, z=0):
+    """ Samples a fourier image with given size and frequencies decayed by decay power
+    :param freqs: Bin values for the discrete fourier transform
+    :param decay_power: Decay power for frequency decay prop 1/f**d
+    :param ch: Number of channels for the resulting mask
+    :param h: Required, first dimension size
+    :param w: Optional, second dimension size
+    :param z: Optional, third dimension size
+    """
+    scale = np.ones(1) / (np.maximum(freqs, np.array([1. / max(w, h, z)])) ** decay_power)
+
+    param_size = (ch, *freqs.shape, 2)
+    param = tf.random.normal(tuple(param_size), dtype=tf.double)
+
+    scale = tf.expand_dims(scale, -1)[None, :]
+
+    return scale * tf.cast(param, tf.double)
+
+
+def fout(x, y, alpha=.3, delta=3):
+    shape = (x.shape[-3], x.shape[-2])
+
+    freqs = fftfreqnd(*shape)
+    spectrum = get_spectrum(freqs, delta, x.shape[-1], *shape)
+    spectrum = tf.dtypes.complex(spectrum[:, 0], spectrum[:, 1])
+    mask = np.real(np.fft.irfftn(spectrum, shape))
+    mask = mask[:1, :shape[0], :shape[1]]
+    flat_mask = tf.reshape(mask, (shape[0] * shape[1],))
+    top_k, _ = tf.math.top_k(flat_mask, k=int(alpha * shape[0] * shape[1]))
+    kth = tf.reduce_min(top_k)
+
+    mask = tf.reshape(tf.where(mask <= kth, tf.ones_like(mask), tf.zeros_like(mask)), (1, shape[0], shape[1]))
+
+    mask = np.moveaxis(mask, 0, -1)
+    mask = tf.stack([mask for i in range(x.shape[0])])
+
+    x = tf.multiply(mask, tf.cast(x, tf.double))
+
+    x, y = tf.cast(x, tf.float32), tf.cast(y, tf.float32)
+
+    return x, y
+
+
+def foff_dset(train_dset, alpha=0.125, delta=3.0, **kwargs):
+    return train_dset.map(lambda x, y: tf.py_function(fout, inp=[x, y, tf.cast(alpha, tf.double),
+                                                                 tf.cast(delta, tf.double)],
+                                                      Tout=(tf.float32, tf.float32)),
+                          num_parallel_calls=tf.data.AUTOTUNE)
+
+
+def arithmetic_blend(x, x_1, alpha=1.0):
+    """
+     sum a batch along the batch dimension weighted by a uniform random vector from the n simplex
+      (convex hull of unit vectors)
+    """
+    rng = np.random.default_rng()
+    weights = rng.dirichlet((alpha, alpha), 1)[0]
+
+    x = np.stack([x, x_1])
+
+    weights = np.array(weights, dtype=np.double).reshape(-1, 1)
+    # sum along the 0th dimension weighted by weights
+    x = tf.tensordot(weights, tf.cast(x, tf.double), (0, 0))[0]
+    # return the convex combination
+    return tf.cast(x, tf.float32)
+
+
+def geometric_blend(x, x_1, alpha=1.0):
+    """
+     multiply two batches along the first dimension weighted by a uniform random vector from the n simplex
+      (convex hull of unit vectors)
+    then take the square root
+    """
+    x = x - tf.reduce_min(x)
+    x_1 = x_1 - tf.reduce_min(x_1)
+
+    x = x / tf.reduce_max(x)
+    x_1 = x_1 / tf.reduce_max(x_1)
+
+    rng = np.random.default_rng()
+    weights = rng.dirichlet((alpha, alpha), 1)[0]
+    w_0, w_1 = weights
+
+    x = tf.pow(x, w_0)
+    x_1 = tf.pow(x_1, w_1)
+
+    x = tf.math.multiply(x, x_1)
+    x = tf.pow(x, tf.cast(1.0 / tf.reduce_sum(weights), tf.float32))
+
+    x = x - tf.reduce_mean(x)
+    # return the convex combination
+    return tf.cast(x, tf.float32)
 
 
 def to_4d(image: tf.Tensor) -> tf.Tensor:
@@ -347,3 +459,9 @@ def custom_rand_augment_dset(ds, M=.2, N=1):
 
 def add_gaussian_noise(x, y, std=0.01):
     return x + tf.random.normal(shape=x.shape, mean=0.0, stddev=std, dtype=tf.float32), tf.cast(y, tf.float32)
+
+
+def add_gaussian_noise_dset(ds, std=0.01):
+    return ds.map(
+        lambda x, y: tf.py_function(add_gaussian_noise, inp=[x, y, std], Tout=(tf.float32, tf.float32)),
+        num_parallel_calls=tf.data.AUTOTUNE)

@@ -3,6 +3,8 @@ from supervised.util import Config, Experiment
 from supervised.models.cnn import build_EfficientNetB0
 
 from supervised.datasets.image_classification import deep_weeds
+from supervised.data_augmentation.msda import mixup_dset
+from supervised.data_augmentation.ssda import add_gaussian_noise_dset
 """
 hardware_params must include:
 
@@ -79,7 +81,7 @@ dataset_params = {
     'batch': 1,
     'prefetch': 1,
     'shuffle': True,
-    'augs': []
+    'augs': [add_gaussian_noise_dset, mixup_dset]
 }
 
 config = Config(hardware_params, network_params, dataset_params, experiment_params)
