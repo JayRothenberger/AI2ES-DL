@@ -4,10 +4,6 @@ import tensorflow as tf
 import numpy as np
 from keras.layers.preprocessing import image_preprocessing as image_ops
 
-"""
-TODO: make these functions from one dataset to another dataset
-"""
-
 
 def fftfreqnd(h, w):
     """ Get bin values for discrete fourier transform of size (h, w, z)
@@ -458,7 +454,7 @@ def custom_rand_augment_dset(ds, M=.2, N=1):
 
 
 def add_gaussian_noise(x, y, std=0.01):
-    return x + tf.random.normal(shape=x.shape, mean=0.0, stddev=std, dtype=tf.float32), tf.cast(y, tf.float32)
+    return x + tf.random.normal(shape=x.shape, mean=0.0, stddev=std, dtype=tf.float32, seed=42), tf.cast(y, tf.float32)
 
 
 def add_gaussian_noise_dset(ds, std=0.01):

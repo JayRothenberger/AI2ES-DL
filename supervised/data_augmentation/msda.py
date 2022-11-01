@@ -3,11 +3,6 @@ import numpy as np
 from supervised.data_augmentation.ssda import add_gaussian_noise, custom_rand_augment, get_spectrum, fftfreqnd
 
 
-"""
-TODO: make these functions from one dataset to another dataset
-"""
-
-
 def blended_dset(train_ds, n_blended=2, prob=None, std=.1, **kwargs):
     """
     :param train_ds: dataset of training images

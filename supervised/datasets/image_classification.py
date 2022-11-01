@@ -30,7 +30,7 @@ def cats_dogs(batch_size=16, image_size=(128, 128, 3), cache=False, prefetch=4, 
         lambda x, y: tf.py_function(preprocess_image, inp=[x, y, True], Tout=(tf.float32, tf.float32)),
         num_parallel_calls=tf.data.AUTOTUNE)
 
-    return ds, test, test
+    return {'train': ds, 'val': test, 'test': test}
 
 
 def deep_weeds(image_size=(128, 128, 3), center=True, **kwargs):

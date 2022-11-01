@@ -7,6 +7,8 @@ import numpy.random
 import tensorflow as tf
 from supervised.data_structures import ModelData
 
+import pynvml
+
 
 class Config:
     hardware_params = None
@@ -39,10 +41,21 @@ def prep_gpu(cpus_per_task, gpus_per_task=0):
     if not gpus_per_task:
         os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
-    # TODO: use pynvml here to select an appropriate gpu
-    physical_devices = tf.config.get_visible_devices('GPU')
-    n_physical_devices = len(physical_devices)
-    print(physical_devices)
+    gpus = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(pynvml.nvmlDeviceGetCount())]
+
+    gpus_per_task = gpus_per_task if gpus_per_task > -1 else len(gpus)
+
+    usage = [pynvml.nvmlDeviceGetMemoryInfo(gpu).used / pynvml.nvmlDeviceGetMemoryInfo(gpu).total for gpu in gpus]
+
+    avail = sorted([i for i, v in enumerate(usage) if v <= .1])
+
+    if gpus_per_task > len(gpus):
+        raise ValueError("too many gpus requested for this machine")
+
+    physical_devices = [tf.config.get_visible_devices('GPU')]
+    avail_physical_devices = [physical_devices[i] for i in avail][:gpus_per_task]
+    tf.config.set_visible_devices(avail_physical_devices)
+    n_physical_devices = len(avail_physical_devices)
 
     # use the available cpus to set the parallelism level
     if cpus_per_task is not None:
@@ -189,6 +202,128 @@ def start_training(model,
                        train_steps, val_steps, callbacks=callbacks, evaluate_on=evaluate_on)
 
 
+from itertools import product
+
+
+class JobIterator():
+    def __init__(self, params):
+        """
+        Constructor
+
+        @param params Dictionary of key/list pairs
+        """
+        self.params = params
+        # List of all combinations of parameter values
+        self.product = list(dict(zip(params, x)) for x in product(*params.values()))
+        # Iterator over the combinations
+        self.iter = (dict(zip(params, x)) for x in product(*params.values()))
+
+    def next(self):
+        """
+        @return The next combination in the list
+        """
+        return self.iter.next()
+
+    def get_index(self, i):
+        """
+        Return the ith combination of parameters
+
+        @param i Index into the Cartesian product list
+        @return The ith combination of parameters
+        """
+
+        return self.product[i]
+
+    def get_njobs(self):
+        """
+        @return The total number of combinations
+        """
+
+        return len(self.product)
+
+    def set_attributes_by_index(self, i, obj):
+        """
+        For an arbitrary object, set the attributes to match the ith job parameters
+
+        @param i Index into the Cartesian product list
+        @param obj Arbitrary object (to be modified)
+        @return A string representing the combinations of parameters, and the args object
+        """
+
+        # Fetch the ith combination of parameter values
+        d = self.get_index(i)
+        # Iterate over the parameters
+        for k, v in d.items():
+            setattr(obj, k, v)
+
+        return obj, self.get_param_str(i)
+
+    def get_param_str(self, i):
+        """
+        Return the string that describes the ith job parameters.
+        Useful for generating file names
+
+        @param i Index into the Cartesian product list
+        """
+
+        out = 'JI_'
+        # Fetch the ith combination of parameter values
+        d = self.get_index(i)
+        # Iterate over the parameters
+        for k, v in d.items():
+            out = out + "%s_%s_" % (k, v)
+
+        # Return all but the last character
+        return out[:-1]
+
+
+def augment_args(index, network_params):
+    """
+    Use the jobiterator to override the specified arguments based on the experiment index.
+
+    Modifies the args
+
+    :param args: arguments from ArgumentParser
+    :return: A string representing the selection of parameters to be used in the file name
+    """
+
+    # Create parameter sets to execute the experiment on.  This defines the Cartesian product
+    #  of experiments that we will be executing
+    p = network_params['network_args']
+    p['network_fn'] = network_params['network_fn']
+
+    for key in p:
+        if not isinstance(p[key], list):
+            p[key] = [p[key]]
+
+    # Check index number
+    if index is None:
+        return ""
+    # Create the iterator
+    ji = JobIterator({key: p[key] for key in set(p) - set(p['search_space']) - {'search_space'}}) \
+        if network_params['hyperband'] else JobIterator({key: p[key] for key in set(p) - {'search_space'}})
+
+    print("Total jobs:", ji.get_njobs())
+
+    # Check bounds
+    assert (0 <= index < ji.get_njobs()), "exp out of range"
+
+    # Push the attributes to the args object and return a string that describes these structures
+    augmented, arg_str = ji.set_attributes_by_index(index, network_params)
+
+    if network_params['hyperband']:
+        vars(augmented).update({key: p[key] for key in p['search_space']})
+        vars(augmented).update({'search_space': p['search_space']})
+
+    augmented = {
+        'network_fn': augmented['network_fn'],
+        'network_args': augmented.pop('network_fn'),
+        'hyperband': network_params['hyperband']
+    }
+
+    return augmented, arg_str
+
+
 class Experiment:
     """
         The Experiment class is used to run and enqueue deep learning jobs with a config dict
@@ -202,7 +337,6 @@ class Experiment:
         self.params = config.experiment_params
 
     def run(self):
-        # TODO: run locally
         """
         1. prep the hardware (prep_gpu)
         2. get the data
@@ -219,7 +353,7 @@ class Experiment:
         network_fn = self.network_params['network_fn']
         network_args = self.network_params['network_args']
 
-        if self.hardware_params['distributed']:
+        if self.hardware_params['n_gpu'] > 1:
             # create the scope
             strategy = tf.distribute.MirroredStrategy()
             with strategy.scope():
@@ -272,18 +406,42 @@ class Experiment:
             pickle.dump(model_data, fp)
 
     def run_array(self, index=0):
-        # TODO: job iterator and search space code for multiple jobs
-        # TODO: pick job by index
-        pass
+        self.network_params, _ = augment_args(index, self.network_params)
+        self.run()
 
     def enqueue(self):
-        # TODO: queue a slurm job
         """
         1. save the current Experiment object to a pickle temp file
-        2. create the batch file /  hardware params
+        2. create the batch file / hardware params
         3. sbatch the batch file
         """
-        pass
+        exp_file = f"experiments/experiment-{str(time()).replace('.', '')}.pkl"
+        batch_text = f"""#!/bin/bash
+#SBATCH --partition={self.hardware_params['partition']}
+#SBATCH --cpus-per-task={self.hardware_params['n_cpu']}
+#SBATCH --ntasks=1
+#SBATCH --nnodes=1
+#SBATCH --mem={self.hardware_params['memory']}
+#SBATCH --output={self.hardware_params['stdout_path']}
+#SBATCH --error={self.hardware_params['stderr_path']}
+#SBATCH --time={self.hardware_params['time']}
+#SBATCH --job-name={self.hardware_params['name']}
+#SBATCH --mail-user={self.hardware_params['email']}
+#SBATCH --mail-type=ALL
+#SBATCH --chdir={self.hardware_params['dir']}
+#SBATCH --nodelist={','.join(self.hardware_params['nodelist'])}
+#SBATCH --array={self.hardware_params['array']}
+. /home/fagg/tf_setup.sh
+conda activate tf
+python run.py --pkl {exp_file} --lscratch $LSCRATCH --id $SLURM_ARRAY_TASK_ID"""
+
+        with open('experiment.sh', 'w') as fp:
+            fp.write(batch_text)
+
+        with open(exp_file, 'wb') as fp:
+            pickle.dump(self, fp)
+
+        os.system(f'sbatch experiment.sh')
 
 
 class Results:
@@ -291,6 +449,5 @@ class Results:
         The Results class is used to display results for an experiment from a file path
     """
 
-    # TODO
     def __init__(self):
         pass
