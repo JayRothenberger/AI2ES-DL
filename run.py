@@ -21,7 +21,9 @@ if __name__ == "__main__":
     parser = create_parser()
     args = parser.parse_args()
 
-    with open(args.pkl) as fp:
+    with open(args.pkl, 'rb') as fp:
         exp = pickle.load(fp)
+
+    exp.run_args = args
 
     exp.run_array(args.id)

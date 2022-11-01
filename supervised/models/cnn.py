@@ -10,7 +10,6 @@ from time import time
 
 HARDSWISH = lambda x: x * tf.nn.relu6(x + 3) / 6
 MISH = lambda x: x * tf.nn.tanh(tf.nn.softplus(x))
-HARDMISH = lambda x: x * tf.nn.relu5(x + 3) / 5
 
 
 def build_keras_application(application, image_size=(256, 256, 3), learning_rate=1e-4, loss='categorical_crossentropy',
@@ -87,9 +86,13 @@ def build_hallucinetv4_upcycle_plus_plus(conv_filters,
                                          image_size,
                                          iterations=24,
                                          loss='categorical_crossentropy',
+                                         pooling='max',
                                          l1=None, l2=None,
-                                         activation=lambda x: MISH,
+                                         activation=lambda x: x * tf.nn.relu6(x + 3) / 6,
                                          n_classes=10,
+                                         downsample=3,
+                                         dropout=0.1,
+                                         depth=2,
                                          skips=2,
                                          **kwargs):
     if isinstance(conv_filters, str):

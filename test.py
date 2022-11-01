@@ -92,7 +92,8 @@ dataset_params = {
     'dset_args': {
         'image_size': (128, 128, 3)
     },
-    'cache': False,
+    'cache': True,
+    'cach_to_lscratch': False,
     'batch': 4,
     'prefetch': 1,
     'shuffle': True,
@@ -102,8 +103,6 @@ dataset_params = {
 config = Config(hardware_params, network_params, dataset_params, experiment_params)
 
 if __name__ == "__main__":
-
-    print(config.experiment_params)
 
     exp = Experiment(config)
 

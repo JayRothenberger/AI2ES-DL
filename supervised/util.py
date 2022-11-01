@@ -38,6 +38,7 @@ def prep_gpu(cpus_per_task, gpus_per_task=0):
     # tell tensorflow to be quiet
     # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
     # Turn off GPU?
+    pynvml.nvmlInit()
     if not gpus_per_task:
         os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
@@ -47,14 +48,17 @@ def prep_gpu(cpus_per_task, gpus_per_task=0):
 
     usage = [pynvml.nvmlDeviceGetMemoryInfo(gpu).used / pynvml.nvmlDeviceGetMemoryInfo(gpu).total for gpu in gpus]
 
-    avail = sorted([i for i, v in enumerate(usage) if v <= .1])
+    avail = [i for i, v in sorted(list(enumerate(usage)), key=lambda k: k[-1]) if v <= .1]
 
     if gpus_per_task > len(gpus):
         raise ValueError("too many gpus requested for this machine")
 
-    physical_devices = [tf.config.get_visible_devices('GPU')]
+    physical_devices = tf.config.get_visible_devices('GPU')
+    print(physical_devices)
+    print(avail)
+    print(usage)
     avail_physical_devices = [physical_devices[i] for i in avail][:gpus_per_task]
-    tf.config.set_visible_devices(avail_physical_devices)
+    tf.config.set_visible_devices(avail_physical_devices, 'GPU')
     n_physical_devices = len(avail_physical_devices)
 
     # use the available cpus to set the parallelism level
@@ -254,7 +258,7 @@ class JobIterator():
         d = self.get_index(i)
         # Iterate over the parameters
         for k, v in d.items():
-            setattr(obj, k, v)
+            obj[k] = v
 
         return obj, self.get_param_str(i)
 
@@ -317,9 +321,10 @@ def augment_args(index, network_params):
 
     augmented = {
         'network_fn': augmented['network_fn'],
-        'network_args': augmented.pop('network_fn'),
+        'network_args': augmented,
         'hyperband': network_params['hyperband']
     }
+    augmented['network_args'].pop('network_fn')
 
     return augmented, arg_str
 
@@ -335,6 +340,7 @@ class Experiment:
         self.hardware_params = config.hardware_params
         self.dataset_params = config.dataset_params
         self.params = config.experiment_params
+        self.run_args = None
 
     def run(self):
         """
@@ -371,8 +377,8 @@ class Experiment:
                 ds = ds.batch(self.dataset_params['batch'])
 
             if self.dataset_params['cache']:
-                if isinstance(self.dataset_params['cache'], str):
-                    ds = ds.cache(self.dataset_params['cache'])
+                if self.dataset_params['cach_to_lscratch']:
+                    ds = ds.cache(self.run_args.lscratch)
                 else:
                     ds = ds.cache()
 
@@ -420,7 +426,6 @@ class Experiment:
 #SBATCH --partition={self.hardware_params['partition']}
 #SBATCH --cpus-per-task={self.hardware_params['n_cpu']}
 #SBATCH --ntasks=1
-#SBATCH --nnodes=1
 #SBATCH --mem={self.hardware_params['memory']}
 #SBATCH --output={self.hardware_params['stdout_path']}
 #SBATCH --error={self.hardware_params['stderr_path']}
@@ -440,6 +445,8 @@ python run.py --pkl {exp_file} --lscratch $LSCRATCH --id $SLURM_ARRAY_TASK_ID"""
 
         with open(exp_file, 'wb') as fp:
             pickle.dump(self, fp)
+
+        self.batch_file = batch_text
 
         os.system(f'sbatch experiment.sh')
 
