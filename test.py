@@ -24,7 +24,6 @@ hardware_params = {
     'nodelist': ['c732', 'c731'],
     'time': '48:00:00',
     'memory': 8196,
-    'distributed': False,
     # The %04a is translated into a 4-digit number that encodes the SLURM_ARRAY_TASK_ID
     'stdout_path': '/scratch/jroth/supercomputer/text_outputs/exp%01a_stdout_%A.txt',
     'stderr_path': '/scratch/jroth/supercomputer/text_outputs/exp%01a_stderr_%A.txt',
@@ -85,7 +84,7 @@ dataset_params must include:
     'batch': uint
     'prefetch': uint
     'shuffle': bool
-    'augs': list of augs
+    'augs': iterable of data augmentation functions
 """
 dataset_params = {
     'dset_fn': cats_dogs,
@@ -93,7 +92,7 @@ dataset_params = {
         'image_size': (128, 128, 3)
     },
     'cache': True,
-    'cach_to_lscratch': False,
+    'cache_to_lscratch': False,
     'batch': 4,
     'prefetch': 1,
     'shuffle': True,

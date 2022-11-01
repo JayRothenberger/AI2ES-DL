@@ -1,6 +1,7 @@
 import os
 import pickle
-from time import time
+from time import time, sleep
+from random import randint
 import json
 
 import numpy.random
@@ -35,29 +36,28 @@ class Config:
 
 def prep_gpu(cpus_per_task, gpus_per_task=0):
     """prepare the GPU for tensorflow computation"""
-    # tell tensorflow to be quiet
-    # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-    # Turn off GPU?
+    # initialize the nvidia management library
     pynvml.nvmlInit()
+    # if we are not to use the gpu, then disable them
     if not gpus_per_task:
         os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-
+    # gpu handles
     gpus = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(pynvml.nvmlDeviceGetCount())]
-
+    # -1 means "use every gpu"
     gpus_per_task = gpus_per_task if gpus_per_task > -1 else len(gpus)
-
+    # get the fraction of used memory for each gpu
+    sleep(randint(0, 60*5))
     usage = [pynvml.nvmlDeviceGetMemoryInfo(gpu).used / pynvml.nvmlDeviceGetMemoryInfo(gpu).total for gpu in gpus]
-
+    # sort the gpus by their available memory and filter out all gpus with more than 10% used
     avail = [i for i, v in sorted(list(enumerate(usage)), key=lambda k: k[-1]) if v <= .1]
-
+    # if we cannot satisfy the requested number of gpus this is an error
     if gpus_per_task > len(gpus):
         raise ValueError("too many gpus requested for this machine")
-
+    # get the physical devices from tensorflow
     physical_devices = tf.config.get_visible_devices('GPU')
-    print(physical_devices)
-    print(avail)
-    print(usage)
+    # only take the number of gpus we plan to use
     avail_physical_devices = [physical_devices[i] for i in avail][:gpus_per_task]
+    # set the visible devices only to the <gpus_per_task> least utilized
     tf.config.set_visible_devices(avail_physical_devices, 'GPU')
     n_physical_devices = len(avail_physical_devices)
 
@@ -377,7 +377,7 @@ class Experiment:
                 ds = ds.batch(self.dataset_params['batch'])
 
             if self.dataset_params['cache']:
-                if self.dataset_params['cach_to_lscratch']:
+                if self.dataset_params['cache_to_lscratch']:
                     ds = ds.cache(self.run_args.lscratch)
                 else:
                     ds = ds.cache()
