@@ -1,4 +1,4 @@
-from supervised.util import Config, Experiment
+from supervised.util import Config, Experiment, load_most_recent_results
 
 from supervised.models.cnn import build_EfficientNetB0, build_hallucinetv4_upcycle_plus_plus
 
@@ -71,7 +71,7 @@ experiment_params = {
     'seed': 42,
     'steps_per_epoch': 100,
     'validation_steps': 100,
-    'patience': 12,
+    'patience': 1,
     'min_delta': 0.0,
     'epochs': 20,
     'nogo': False,
@@ -106,5 +106,9 @@ if __name__ == "__main__":
     exp = Experiment(config)
 
     print(exp.params)
-
+    exp.run_array(0)
+    results = load_most_recent_results('../results/')
+    for result in results:
+        result.summary()
+    exit()
     exp.enqueue()

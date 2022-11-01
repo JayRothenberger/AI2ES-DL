@@ -107,7 +107,7 @@ def execute_exp(model, train_dset, val_dset, network_params, experiment_params,
     :param evaluate_on: a dictionary of objects on which to call model.evaluate (take care they are not infinite)
     :return: trained keras model encoded as a ModelData instance
     """
-
+    start = time()
     print(model.summary())
     # tf.keras.utils.plot_model(model, show_shapes=True, show_layer_names=True, expand_nested=True,
     #                          to_file=os.curdir + f'/../visualizations/models/model_{str(time())[:6]}.png')
@@ -134,14 +134,15 @@ def execute_exp(model, train_dset, val_dset, network_params, experiment_params,
     evaluate_on = dict() if evaluate_on is None else evaluate_on
 
     evaluations = {k: model.evaluate(evaluate_on[k], steps=val_steps) for k in evaluate_on}
-
+    end = time()
     # populate results data structure
     model_data = ModelData(weights=model.get_weights(),
                            network_params=network_params,
                            network_fn=network_params['network_fn'],
                            evaluations=evaluations,
                            classes=network_params['network_args']['n_classes'],
-                           history=history.history)
+                           history=history.history,
+                           run_time=end - start)
     print('returning model data')
     return model_data
 
@@ -307,7 +308,7 @@ def augment_args(index, network_params):
     ji = JobIterator({key: p[key] for key in set(p) - set(p['search_space']) - {'search_space'}}) \
         if network_params['hyperband'] else JobIterator({key: p[key] for key in set(p) - {'search_space'}})
 
-    print("Total jobs:", ji.get_njobs())
+    print("Size of Hyperparameter Grid:", ji.get_njobs())
 
     # Check bounds
     assert (0 <= index < ji.get_njobs()), "exp out of range"
@@ -325,9 +326,21 @@ def augment_args(index, network_params):
         'hyperband': network_params['hyperband']
     }
     augmented['network_args'].pop('network_fn')
+    augmented['network_args'].pop('network_args')
 
     return augmented, arg_str
 
+
+def dict_to_string(d: dict, prefix="\t"):
+    # print each key/value pair from the dict on a new line
+    s = "{\n"
+    for k in d:
+        if isinstance(d[k], dict):
+            newfix = prefix + '\t'
+            s += f"{prefix}{k}: {dict_to_string(d[k], newfix)}\n"
+        else:
+            s += f"{prefix}{k}: {d[k]}\n"
+    return s + prefix + "}"
 
 class Experiment:
     """
@@ -335,6 +348,7 @@ class Experiment:
     """
 
     def __init__(self, config):
+        self.index = None
         self.batch_file = None
         self.network_params = config.network_params
         self.hardware_params = config.hardware_params
@@ -408,10 +422,12 @@ class Experiment:
                                     train_steps=self.params['steps_per_epoch'],
                                     val_steps=self.params['validation_steps'])
 
+        result = Results(self, model_data)
         with open(f'{os.curdir}/../results/{generate_fname(self.params)}', 'wb') as fp:
-            pickle.dump(model_data, fp)
+            pickle.dump(result, fp)
 
     def run_array(self, index=0):
+        self.index = index
         self.network_params, _ = augment_args(index, self.network_params)
         self.run()
 
@@ -453,8 +469,64 @@ python run.py --pkl {exp_file} --lscratch $LSCRATCH --id $SLURM_ARRAY_TASK_ID"""
 
 class Results:
     """
-        The Results class is used to display results for an experiment from a file path
+        The Results class is used to display results for an experiment from a file path (TODO)
+
+        includes:
+            config
+            experiment
+            model data
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, experiment, model_data):
+        self.config = Config(experiment.hardware_params, experiment.network_params,
+                             experiment.dataset_params, experiment.params)
+        self.experiment = experiment
+        self.model_data = model_data
+
+    def summary(self):
+        metrics = [key for key in self.model_data.history]
+        patience = self.config.experiment_params['patience']
+        epochs = len(self.model_data.history['loss'])
+        performance_at_patience = {key: self.model_data.history[key][epochs - patience]
+                                   for key in metrics}
+
+        index = 'n/a' if self.experiment.index is None else self.experiment.index
+        run_params = dict_to_string(dict(self.experiment.run_args)) if isinstance(self.experiment.run_args, dict) else None
+        print(f"""
+------------------------------------------------------------
+Experimental Results Summary (Index: {index})
+------------------------------------------------------------
+Dataset Params: {dict_to_string(self.experiment.dataset_params)}
+
+Network Params:  {dict_to_string(self.experiment.network_params)}
+------------------------------------------------------------
+Experiment Parameters: {dict_to_string(self.experiment.params)}
+
+Experiment Runtime: {self.model_data.run_time}s
+
+Epochs Run / Average Time: {epochs} / {self.model_data.run_time / len(self.model_data.history['loss'])}s
+
+Performance At Patience: {dict_to_string(performance_at_patience)}
+------------------------------------------------------------
+Runtime Parameters: {run_params}
+------------------------------------------------------------
+        """)
+
+
+def load_most_recent_results(d, n=1):
+    """
+    load the n most recent result files from the result directory
+    :param d: directory from which to load the files
+    :param n: number of recent results to load
+    :return: a list of Results objects
+    """
+    results = []
+
+    for file in sorted(os.listdir(d), key=lambda f: os.stat(os.path.join(d, f)).st_mtime, reverse=True):
+        with open(os.path.join(d, file), 'rb') as fp:
+            results.append(pickle.load(fp))
+            n -= 1
+            if not n:
+                break
+
+    return results

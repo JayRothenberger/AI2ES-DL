@@ -21,6 +21,7 @@ class ModelData:
     evaluations: dict
     classes: list
     history: dict
+    run_time: float
 
     def report(self):
         # give a performance report for an individual model
