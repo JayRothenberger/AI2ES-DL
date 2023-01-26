@@ -1,13 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="36e069ba-722d-4076-9a6f-6e286d737968" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/explain.py" beforeDir="false" afterPath="$PROJECT_DIR$/explain.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supervised/evaluations/image_classification.py" beforeDir="false" afterPath="$PROJECT_DIR$/supervised/evaluations/image_classification.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supervised/models/ae.py" beforeDir="false" afterPath="$PROJECT_DIR$/supervised/models/ae.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supervised/models/cnn.py" beforeDir="false" afterPath="$PROJECT_DIR$/supervised/models/cnn.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supervised/models/custom_layers.py" beforeDir="false" afterPath="$PROJECT_DIR$/supervised/models/custom_layers.py" afterDir="false" />
-    </list>
+    <list default="true" id="36e069ba-722d-4076-9a6f-6e286d737968" name="Default Changelist" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -31,16 +25,22 @@
       <filtered-out-file-type name="COMMIT_BY_MESSAGE" />
     </file-type-list>
   </component>
+  <component name="MarkdownSettingsMigration">
+    <option name="stateVersion" value="1" />
+  </component>
   <component name="ProjectId" id="2GxKTgUQxFg724bfLP4cQSYSvF0" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">
-    <property name="RunOnceActivity.OpenProjectViewOnStart" value="true" />
-    <property name="RunOnceActivity.ShowReadmeOnStart" value="true" />
-    <property name="last_opened_file_path" value="$PROJECT_DIR$/../Semi-Supervised" />
-  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "RunOnceActivity.OpenProjectViewOnStart": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "WebServerToolWindowFactoryState": "false",
+    "last_opened_file_path": "C:/Users/roth0025/Documents/GitHub/AI2ES/AI2ES-DL"
+  }
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\jaycr\Desktop\AI2ES\AI2ES_DL_public" />
@@ -54,8 +54,12 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1667324804089</updated>
+      <workItem from="1674768690133" duration="1176000" />
     </task>
     <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
     <option name="TAB_STATES">
@@ -67,6 +71,5 @@
         </entry>
       </map>
     </option>
-    <option name="oldMeFiltersMigrated" value="true" />
   </component>
 </project>
